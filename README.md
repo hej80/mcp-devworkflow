@@ -260,13 +260,6 @@ Part D is the point of per-tool buckets: a write burst does not starve local rea
 is used throughout so the demo never creates real issues — the limiter runs *before* that flag is
 read, so the budget behaves exactly as it would for a real write.
 
-### Bonus — Error disclosure (`devworkflow/errors.py`)
-
-Expected errors return a message describing the *rule* that was broken. Unexpected exceptions return
-only a random `error_id`; the traceback goes to the stderr log, which only the operator can read. A
-GitHub `404` never says whether a private repo exists, and `Settings.redact()` scrubs the token from
-any string on its way out.
-
 ---
 
 ## 6. Project structure
@@ -336,25 +329,16 @@ the code comments and in the reflection.
 
 ## 9. Known limitations
 
-Three limitations I found by building and testing this server, not from a checklist:
+Three things I found while building and testing this server:
 
-- **The rate limiter charges dry runs.** `create_github_issue(dry_run=true)` spends a token even
-  though nothing reaches GitHub, so the `triage_bug_report` prompt burns two of its three writes to
-  file one issue. This was deliberate — the budget bounds how often an agent may invoke the tool at
-  all, not how many HTTP requests it makes — but a reviewer could fairly argue a preview should be
-  cheaper. The fix would be a separate, smaller bucket for dry runs rather than exempting them, so
-  the tool still cannot be used as an unlimited validation oracle.
+- **The rate limiter charges dry runs.** A preview costs a token even though nothing reaches
+  GitHub, so `triage_bug_report` burns two of its three writes to file one issue. Dry runs should
+  get their own smaller bucket.
 
-- **My own security control broke my own tooling.** After I set `ALLOWED_REPOS` to a single
-  repository, `exploit_rate_limit.py` reported zero calls allowed: the allow-list rejected its
-  hard-coded target before the rate limiter could refuse anything, which looked exactly like a bug
-  in the limiter. I fixed it by making the exploit read the server's own configuration. A security
-  control's blast radius includes your own tests, and those are usually the first thing it breaks —
-  precisely when you are least inclined to trust the control.
+- **My own allow-list broke my own exploit script.** `ALLOWED_REPOS` rejected the hard-coded repo
+  in `exploit_rate_limit.py` before the rate limiter ever ran, so the demo looked like a bug in the
+  limiter. Fixed by making the exploit read the server's own config.
 
-- **I cannot fully prove my validation is what protected the user.** When I sent a genuinely
-  destructive payload through Claude Desktop, the client declined to forward it and my server never
-  saw it, so I had to demonstrate the refusal with a harmless equivalent. That is defence in depth
-  working as intended, but it means every test through a well-behaved client gives me false
-  confidence: a jailbroken or compromised client is exactly the threat model this validation exists
-  for. The exploit scripts call the tool functions directly for that reason.
+- **I cannot fully prove my validation is what protected the user.** Claude Desktop refused my
+  destructive payload before the server ever saw it. The exploit scripts call the tool functions
+  directly for this reason.

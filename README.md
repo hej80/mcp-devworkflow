@@ -2,16 +2,15 @@
 
 **Author: Hamdan Emad Jabr Jaarour** · GitHub: hej80
 
-A local [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude Desktop read a
-local git repo and file GitHub issues, with **input sanitization** and **rate limiting** on every call. It
-exposes 3 tools, 1 resource and 2 prompts over stdio (JSON-RPC), authenticated by a fine-grained GitHub
-token loaded from `.env`.
+A local [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude Desktop read a local
+git repo and file GitHub issues, with **input sanitization** and **rate limiting** on every call. It exposes 3
+tools, 1 resource and 2 prompts over stdio (JSON-RPC), authenticated by a fine-grained token from `.env`.
 
 ## 1. What the Server Exposes
 
 | Tool | What it does | Network? | Budget |
 |---|---|---|---|
-| `summarize_recent_commits(repo_path, author, max_count)` | Reads `git log` in a local repo, returns structured commits and a per-author tally | No | 10 / 60 s |
+| `summarize_recent_commits(repo_path, author, max_count)` | Reads `git log` in a local repo, returns structured commits plus a per-author tally | No | 10 / 60 s |
 | `create_github_issue(repo, title, body, labels, dry_run)` | Creates a GitHub issue over the authenticated REST API. `dry_run=true` previews and sends nothing | Yes (write) | 3 / 30 s |
 | `server_diagnostics(check_github)` | Reports config health, whether GitHub accepts the token, and live budget. Never reveals the token | Optional | 20 / 60 s |
 
@@ -30,27 +29,35 @@ token loaded from `.env`.
 3. **Execute** — `git_ops.py` (subprocess, `shell=False`) or `github_api.py` (httpx + Bearer token)
 4. **Reply** (`errors.py`) — uniform `{ok, error:{code, message}}` envelope, no tracebacks or secrets
 
-**The order is deliberate.** Budget is spent *before* validation, so a runaway loop cannot use the tool as an
-unlimited oracle; validation runs before any subprocess or HTTP call, so nothing attacker-influenced reaches `git`.
+**The order is deliberate.** Budget is spent *before* validation, so a runaway loop cannot use the tool as an unlimited oracle; validation runs before any subprocess or HTTP call, so nothing attacker-influenced reaches `git`.
 
 ## 3. Setup
 
-**Prerequisites:** Python 3.10+, `git` on your PATH, [Claude Desktop](https://claude.ai/download), [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
+**Step 1 — clone the repo and create the virtual environment.**
 
 ```bash
 git clone https://github.com/hej80/mcp-devworkflow.git && cd mcp-devworkflow
 uv venv                          # or: python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 uv pip install -r requirements.txt
-cp .env.example .env             # then fill in GITHUB_TOKEN, WORKSPACE_ROOT, ALLOWED_REPOS
+# VS Code: Cmd/Ctrl+Shift+P -> Python: Select Interpreter -> ./.venv/bin/python
+```
+
+**Step 2 — create a GitHub token** at
+[github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new): choose
+**Only select repositories**, pick one, set **Issues: Read and write** and a short expiry, generate. GitHub shows
+it once. Fine-grained over classic on purpose: a classic `repo` scope reads and writes **every** repo you own.
+
+**Step 3 — configure `.env` and the workspace.**
+
+```bash
+cp .env.example .env   # fill in GITHUB_TOKEN, WORKSPACE_ROOT, ALLOWED_REPOS
 mkdir -p ~/mcp-workspace && cd ~/mcp-workspace && git clone https://github.com/hej80/mcp-test.git
 ```
 
-In VS Code: **Cmd/Ctrl+Shift+P → Python: Select Interpreter → `./.venv/bin/python`**. For the token, go to
-[github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new),
-choose **Only select repositories**, set **Issues: Read and write** and a short expiry, and generate — GitHub
-shows it once. Fine-grained over classic on purpose: a classic `repo` scope reads and writes **every** repo
-you own; this one touches one, and only its issues. `WORKSPACE_ROOT` is a sandbox and `.env` is gitignored. Verify:
+`WORKSPACE_ROOT` is a sandbox: the git tool refuses any path resolving outside it, and `.env` is gitignored.
+
+**Step 4 — verify.**
 
 ```bash
 python tests/test_security_and_ratelimit.py   # 14 unit tests
@@ -68,11 +75,10 @@ Open **Settings → Developer → Edit Config** (macOS `~/Library/Application Su
 } } }
 ```
 
-A uv variant is in [`claude_desktop_config.uv.json`](claude_desktop_config.uv.json). Three things break
-this for most people: **paths must be absolute** (Claude Desktop does not run your shell, so `python`, `~`
-and relative paths do not resolve); **use the venv's interpreter**, or `mcp` is not found; and **no secrets
-here** — the file is world-readable plaintext, so the token stays in `.env`. Then **quit Claude Desktop
-fully** (Cmd+Q) and reopen.
+A uv variant is in [`claude_desktop_config.uv.json`](claude_desktop_config.uv.json). Three things break this
+for most people: **paths must be absolute** (Claude Desktop does not run your shell, so `python`, `~` and
+relative paths do not resolve); **use the venv's interpreter**, or `mcp` is not found; and **no secrets here**
+— the file is world-readable plaintext, so the token stays in `.env`. Then **quit fully** (Cmd+Q) and reopen.
 
 ## 5. The Two Best Practices
 
@@ -86,21 +92,20 @@ input. `python exploits/exploit_injection.py` first attacks vulnerable code kept
 | `"Alice; touch PWNED #"` | `shell=True` | file created — command execution |
 | `"--output=/path/PWNED"` | `shell=False` | file created — git writes the file itself |
 
-The second case is the point: **`shell=False` does not stop it** — no shell is involved, git parses the
-value as an option. That is argument injection, and only validation stops it. The same nine payloads sent
-to the real tool are all refused with `INVALID_INPUT` and create no files (`;`, `$()`, `|`, `--output=`,
-`--upload-pack=`, absolute and relative traversal, NUL bytes, oversized input). Five rules do it:
-`shell=False` with an argv list; allow-list validation (reject, never escape); no leading `-`; flag and
-value as one token (`--author=<value>`); and path confinement resolving symlinks and `..` *before* the
-containment check.
+The second case is the point: **`shell=False` does not stop it** — no shell is involved, git parses the value
+as an option. That is argument injection, and only validation stops it. The same nine payloads sent to the
+real tool are all refused with `INVALID_INPUT` and create no files (`;`, `$()`, `|`, `--output=`,
+`--upload-pack=`, absolute and relative traversal, NUL bytes, oversized input). Five rules do it: `shell=False`
+with an argv list; allow-list validation (reject, never escape); no leading `-`; flag and value as one token
+(`--author=<value>`); and path confinement resolving symlinks and `..` *before* the containment check.
 
 ### Best Practice #2 — Rate Limiting (`devworkflow/ratelimit.py`)
 
 A model calls tools in a loop; a retry loop or a prompt injection saying "keep trying" turns
 `create_github_issue` into an issue-spam bot. The defence is a token bucket per tool — `capacity` tokens
 refilling at `capacity / window` per second, writes capped at 3 per 30 s. It allows a short burst while
-bounding the long-run average, unlike a fixed-window counter which allows `2N` across a boundary.
-`python exploits/exploit_rate_limit.py` fires 8 calls in a row:
+bounding the long-run average, unlike a fixed-window counter which allows `2N` across a boundary. `python
+exploits/exploit_rate_limit.py` fires 8 calls in a row:
 
 ```
 PART A  without rate limiting : 8/8 writes would reach GitHub
@@ -109,20 +114,26 @@ PART C  after waiting 10.4s   : ALLOWED again — a legitimate user is not locke
 PART D  git_read 10/10, github_write 0.04/3, github_read 20/20
 ```
 
-Part D is why buckets are per tool: a write burst does not starve local reads. **Refusals never leak** —
-both guard rails report through one envelope in `errors.py`: expected errors name the rule broken, unexpected
-ones return only a random `error_id` with the traceback sent to stderr, and `Settings.redact()` scrubs the token from anything leaving the server.
+Part D is why buckets are per tool: a write burst does not starve local reads. **Refusals never leak** — both
+guard rails report through one envelope in `errors.py`: expected errors name the rule broken, unexpected ones return only a random `error_id` with the traceback sent to stderr, and `Settings.redact()` scrubs the token from anything leaving the server.
 
 ## 6. Project Structure
 
 ```
-server.py                     MCP entry point; holds only MCP wiring
-devworkflow/security.py       BEST PRACTICE 1 — validation & sanitization
-devworkflow/ratelimit.py      BEST PRACTICE 2 — token bucket
-devworkflow/{config,errors}.py  dotenv_values + pathlib (no os.environ) · safe error envelope
-devworkflow/{git_ops,github_api}.py  subprocess shell=False, minimal env · GitHub REST (httpx)
-exploits/ tests/ docs/        attacks · 14 unit tests + stdio client · diagram
-claude_desktop_config.json    MCP config (a .uv.json variant is also provided) · .env.example
+mcp-devworkflow/
+├── server.py                    MCP entry point: 3 tools, 1 resource, 2 prompts
+├── devworkflow/
+│   ├── security.py              BEST PRACTICE 1 — validation & sanitization
+│   ├── ratelimit.py             BEST PRACTICE 2 — token bucket
+│   ├── config.py                pathlib + dotenv_values; secrets never enter os.environ
+│   ├── errors.py                error taxonomy + safe envelope (stderr logging)
+│   ├── git_ops.py               subprocess: shell=False, timeout, minimal env
+│   └── github_api.py            authenticated GitHub REST client (httpx)
+├── exploits/                    attacks vulnerable code, then the hardened tool
+├── tests/                       14 unit tests + end-to-end MCP client over stdio
+├── docs/architecture.png        request-flow diagram (section 2)
+├── claude_desktop_config.json   MCP config (a .uv.json variant is also provided)
+└── .env.example                 template — copy to .env, never commit .env
 ```
 
 ## 7. Code Citations
@@ -144,7 +155,6 @@ An AI assistant (Claude) was used during development, as the assignment requires
 
 | Symptom | Cause and fix |
 |---|---|
-| Server not listed in Claude Desktop | Paths must be absolute; quit Claude fully (Cmd+Q) and reopen |
-| "Server disconnected" | Run `python tests/smoke_test_stdio.py` for the real error. Logs: `~/Library/Logs/Claude/mcp-server-devworkflow.log` |
+| Server not listed, or "Server disconnected" | Paths must be absolute; quit Claude fully (Cmd+Q) and reopen. Run `python tests/smoke_test_stdio.py` for the real error; logs in `~/Library/Logs/Claude/mcp-server-devworkflow.log` |
 | `ModuleNotFoundError: mcp` | The config points at the system Python. Use `.venv/bin/python` |
 | Every tool fails with a JSON parse error | Something wrote to **stdout**, the JSON-RPC channel. Use the stderr logger in `errors.py`, never `print()`. `AUTH_ERROR`: check `server_diagnostics`. `RATE_LIMITED` or a refused path is the guard rail working as designed |

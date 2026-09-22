@@ -262,10 +262,8 @@ Every borrowed idea is cited here and again as a comment at the point of use.
 | `github_api.py` | Request headers (`Accept: application/vnd.github+json`, `X-GitHub-Api-Version`) and the `POST /repos/{owner}/{repo}/issues` contract | [GitHub REST API — Create an issue](https://docs.github.com/en/rest/issues/issues#create-an-issue) |
 | `.env` handling | `dotenv_values()` rather than `load_dotenv()`, to keep secrets out of `os.environ` | [python-dotenv docs](https://saurabh-kumar.com/python-dotenv/) |
 
-This project is my own work. I used an AI assistant (Claude) while building it, as the assignment
-requires, and I have reviewed every line of code I am submitting. I understand how each part works
-and can explain any of it in detail — the tool design, the validation rules, the token bucket, and
-the order of the four stages in section 2.
+An AI assistant (Claude) was used during development, as the assignment requires. All code in this
+repository has been reviewed line by line and can be explained in detail.
 
 ---
 

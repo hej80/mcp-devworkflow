@@ -306,15 +306,44 @@ An AI assistant (Claude) was used while writing this project, as the assignment 
 
 ## 9. Known limitations
 
-| Limitation | Why | How I would fix it |
-|---|---|---|
-| **Rate limits reset on restart** | The buckets live in process memory, and two clients each running their own copy each get a full budget — so the real limit is N times the configured one | Store the counters in Redis or SQLite so every process shares one budget |
-| **No per-caller identity** | stdio MCP has no notion of a user, so the budget is global to the server | An HTTP transport with OAuth, keying a bucket per authenticated caller |
-| **Issue creation is not idempotent** | If GitHub succeeds but the response is lost to a timeout, a retry files a duplicate | An idempotency key hashing repo + title + body, with a short-lived cache of recent issues |
-| **ASCII-only validation** | The allow-list rejects legitimate names containing accents or non-Latin scripts | Unicode NFKC normalization, then reject by character *category* rather than by alphabet |
-| **Sandbox enforced in Python, not the OS** | `resolve_repo_path()` is correct — it resolves symlinks before checking containment — but a bug in my own code would bypass it | Run the server in a container with only the workspace mounted, so the kernel enforces the boundary |
+These are the five I would fix first. Three of them surfaced while building and testing this
+server rather than from a checklist.
 
-The last one is different in kind from the others. The first four are things I would build with
-more time; the fifth is the difference between a control that is *correct* and one that is
-*trustworthy*. Mine is correct, but it asks you to trust that my code has no bugs — a container
-does not.
+**1. The rate limiter charges dry runs.** `create_github_issue(dry_run=true)` spends a token even
+though nothing is sent to GitHub. I did this deliberately — the budget exists to bound how often an
+agent may invoke the tool at all, not how many HTTP requests it makes — but it has a cost: the
+`triage_bug_report` prompt spends two of the three available writes to file one issue, because the
+preview and the confirmed call are each charged. A reviewer could reasonably argue a preview should
+be free. If I revisited it I would give dry runs their own cheaper bucket rather than exempting them
+entirely, so the tool still cannot be used as an unlimited validation oracle.
+
+**2. My own security control broke my own tooling.** After I set `ALLOWED_REPOS` to a single
+repository, `exploit_rate_limit.py` began failing: the allow-list rejected its hard-coded target
+before the rate limit could refuse anything, so the demo reported zero calls allowed and looked
+like a bug in the limiter. The fix was to make the exploit read the server's own configuration
+rather than hard-code a repository. The lesson generalises — a security control's blast radius
+includes your own tests, and those are usually the first thing it breaks, which is exactly when you
+are least inclined to trust the control.
+
+**3. I cannot fully prove my validation is what protected the user.** When I tried a genuinely
+destructive payload through Claude Desktop, the client declined to send it; my server never saw it.
+I had to use a harmless equivalent to demonstrate the refusal. That is defence in depth working as
+intended, but it also means every test I ran through a well-behaved client gives me false
+confidence: a jailbroken or compromised client is precisely the threat model my validation exists
+for, and I have only exercised it through a careful one. The exploit scripts call the tool functions
+directly for this reason, which is the closest I can get without writing a deliberately hostile
+client.
+
+**4. The workspace sandbox is enforced by my code, not the operating system.**
+`resolve_repo_path()` is correct — it resolves symlinks and `..` before checking containment — but
+it is still an `if` statement I wrote. A bug in my own code bypasses it entirely. Running the server
+in a container with only the workspace directory mounted would make the boundary kernel-enforced.
+That is the difference between a control that is *correct* and one that is *trustworthy*: mine asks
+you to trust that my code has no bugs; a container does not.
+
+**5. Rate limits are in-memory and per-process.** Restarting the server refills every bucket, and
+two clients each launching their own copy each get a full budget — so the effective limit is N times
+the configured one. Backing the buckets with Redis, or even a small SQLite file, would make the
+budget survive restarts and be shared across processes. Related: there is no per-caller identity,
+because stdio MCP has no notion of a user, so the budget is global to the server rather than per
+person.

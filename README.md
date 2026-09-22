@@ -149,7 +149,7 @@ Every borrowed idea is cited here and again as a comment at the point of use.
 | `github_api.py` | Request headers and the `POST /repos/{owner}/{repo}/issues` contract | [GitHub REST API — Create an issue](https://docs.github.com/en/rest/issues/issues#create-an-issue) |
 | `.env` handling | `dotenv_values()` rather than `load_dotenv()`, to keep secrets out of `os.environ` | [python-dotenv docs](https://saurabh-kumar.com/python-dotenv/) |
 
-An AI assistant (Claude) was used during development, as the assignment requires; all code in this repo has been reviewed line by line and can be explained in detail.
+An AI assistant (Claude) was used while building this server, as the assignment requires. All code in this repository has been reviewed line by line and can be explained in detail.
 
 ## 8. Troubleshooting
 

@@ -39,6 +39,8 @@ language, open issues, stars, last update. Example: `repo://modelcontextprotocol
 
 ## 2. How a Request Flows
 
+![How one tool call flows through the devworkflow server](docs/architecture.png)
+
 Every tool call passes through four stages, in this order:
 
 1. **Rate limit** (`ratelimit.py`) — token bucket, one budget per tool
@@ -168,68 +170,49 @@ python exploits/exploit_rate_limit.py   # ~11 seconds
 
 ### Best Practice #1 — Input Sanitization (`devworkflow/security.py`)
 
-Tool arguments are written by an LLM whose context may contain attacker-controlled text — a README,
-an issue body, a pasted log. They are untrusted input, exactly like an HTTP form field.
+Tool arguments are written by an LLM whose context may hold attacker-controlled text, so they are
+untrusted input.
 
-**Part A** attacks deliberately vulnerable code that exists only inside the exploit file:
+**The exploit.** `exploit_injection.py` first attacks vulnerable code kept inside the exploit file:
 
-| Attack | Vulnerable implementation | Result |
+| Attack | Vulnerable code | Result |
 |---|---|---|
-| `author = "Alice; touch PWNED #"` | `subprocess.run(f"git log --author={author}", shell=True)` | **File created** — command execution |
-| `author = "--output=/path/PWNED"` | `subprocess.run(["git","log", author], shell=False)` | **File created** — git writes an attacker-chosen file |
+| `"Alice; touch PWNED #"` | `shell=True` | file created — command execution |
+| `"--output=/path/PWNED"` | `shell=False` | file created — git writes the file itself |
 
-The second is the point: **`shell=False` does not stop it.** No shell is involved; git itself parses
-the value as an option. That is argument injection, and only validation stops it.
+The second case is the interesting one: **`shell=False` does not stop it.** No shell is involved —
+git parses the value as an option. That is argument injection, and only validation stops it.
 
-**Part B** fires the same payloads at the real tool. All nine are refused with `INVALID_INPUT`:
-
-```
-BLOCKED  shell injection (;)                  BLOCKED  path traversal (absolute)
-BLOCKED  command substitution ($())           BLOCKED  path traversal (relative ..)
-BLOCKED  pipe to shell (|)                    BLOCKED  NUL byte in path
-BLOCKED  argument injection (--output=)       BLOCKED  oversized request (DoS)
-BLOCKED  argument injection (--upload-pack=)
-Files created by Part B: none
-```
-
-**Part C** runs a legitimate call, to show the tool still works.
-
-Six layers do the work:
-
-1. `shell=False` with an argv list — metacharacters are never interpreted
-2. Allow-list validation — reject rather than escape; escaping is easy to get subtly wrong
-3. `reject_option_like()` — no leading `-`; this is what stops argument injection
-4. Flag and value as one token — `--author=<value>`, never `--author <value>`
-5. Path confinement — resolve symlinks and `..` *first*, then check containment in `WORKSPACE_ROOT`
-6. Bounds — `max_count` 1–200, title 256 chars, body 8000 chars, output 20k
+**The defence.** The same nine payloads against the real tool are all refused with `INVALID_INPUT`
+and create no files: `;`, `$()`, `|`, `--output=`, `--upload-pack=`, absolute and relative path
+traversal, NUL bytes, oversized input. Five rules do the work — `shell=False` with an argv list,
+allow-list validation (reject, never escape), no leading `-`, flag and value as one token
+(`--author=<value>`), and path confinement that resolves symlinks and `..` *before* checking
+containment in `WORKSPACE_ROOT`.
 
 ### Best Practice #2 — Rate Limiting (`devworkflow/ratelimit.py`)
 
-**Threat:** an MCP tool is called by a model *in a loop* — a retry loop, a prompt injection saying
-"keep trying", or a plain agent bug. `create_github_issue` becomes an issue-spam bot and burns the
-token's 5,000 req/hour GitHub quota.
+**The threat.** A model calls tools in a loop. A retry loop, or a prompt injection saying "keep
+trying", turns `create_github_issue` into an issue-spam bot.
 
-**Token bucket.** The bucket holds `capacity` tokens and refills continuously at `capacity / window`
-per second. Each call spends one; a call with no token is refused and told how long to wait. This
-allows a short burst while bounding the long-run average, unlike a fixed-window counter which allows
-`2N` calls across a boundary. `time.monotonic()` means a clock change cannot hand out free tokens,
-and a `threading.Lock` makes check-then-act atomic.
+**The defence.** A token bucket per tool: `capacity` tokens refilling at `capacity / window` per
+second, writes capped at 3 per 30s. A bucket allows a short burst while bounding the long-run
+average, unlike a fixed-window counter which allows `2N` calls across a boundary.
+
+**The exploit.** `exploit_rate_limit.py` fires 8 calls in a row:
 
 ```
 PART A  without rate limiting : 8/8 writes would reach GitHub
-PART B  with rate limiting    : 3 ALLOWED, 5 REFUSED
-        call 4: REFUSED  code=RATE_LIMITED retry_after=10.0s
+PART B  with rate limiting    : 3 ALLOWED, 5 REFUSED (retry_after=10.0s)
 PART C  after waiting 10.4s   : ALLOWED again — a legitimate user is not locked out
 PART D  git_read 10/10, github_write 0.04/3, github_read 20/20
 ```
 
-Part D is why buckets are per tool: a write burst does not starve local reads. `dry_run=True`
-throughout, so no real issues are created — the limiter runs *before* that flag is read.
+Part D is why buckets are per tool: a write burst does not starve local reads.
 
-**Reporting a refusal.** Neither guard rail may leak while saying no. Every refusal returns through
-one envelope in `errors.py`: expected errors name the rule that was broken, unexpected ones return
-only a random `error_id` with the traceback sent to stderr, and `Settings.redact()` scrubs the token
-from any string on its way out. A GitHub `404` never reveals whether a private repo exists.
+**Refusals never leak.** Both guard rails report through one envelope in `errors.py`: expected errors
+name the rule that was broken, unexpected ones return only a random `error_id` with the traceback
+sent to stderr, and `Settings.redact()` scrubs the token from any string leaving the server.
 
 ---
 
@@ -251,6 +234,8 @@ mcp-devworkflow/
 ├── tests/
 │   ├── test_security_and_ratelimit.py   14 unit tests
 │   └── smoke_test_stdio.py      end-to-end MCP client over stdio
+├── docs/
+│   └── architecture.png         request-flow diagram (section 2)
 ├── claude_desktop_config.json   MCP configuration (venv python)
 ├── claude_desktop_config.uv.json  MCP configuration (uv)
 ├── .env.example                 template — copy to .env, never commit .env
@@ -276,6 +261,9 @@ Every borrowed idea is cited here and again as a comment at the point of use.
 | `ratelimit.TokenBucket` | Token-bucket algorithm (continuous refill formulation), implemented from the algorithm description | [Token bucket — Wikipedia](https://en.wikipedia.org/wiki/Token_bucket) |
 | `github_api.py` | Request headers (`Accept: application/vnd.github+json`, `X-GitHub-Api-Version`) and the `POST /repos/{owner}/{repo}/issues` contract | [GitHub REST API — Create an issue](https://docs.github.com/en/rest/issues/issues#create-an-issue) |
 | `.env` handling | `dotenv_values()` rather than `load_dotenv()`, to keep secrets out of `os.environ` | [python-dotenv docs](https://saurabh-kumar.com/python-dotenv/) |
+
+An AI assistant (Claude) was used while writing this project, as the assignment requires. Every
+line was reviewed and is explainable.
 
 ---
 

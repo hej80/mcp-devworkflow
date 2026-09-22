@@ -2,9 +2,13 @@
 
 **Author: Hamdan Emad Jabr Jaarour** · GitHub: hej80
 
-A local [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude Desktop read a local git repository and file GitHub issues on your behalf, with **input sanitization** and **rate limiting** enforced on every call.
+A local [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude Desktop
+read a local git repository and file GitHub issues on your behalf, with **input sanitization** and
+**rate limiting** enforced on every call.
 
-It exposes 3 tools, 1 resource and 2 prompts over stdio (JSON-RPC), the transport Claude Desktop uses, and authenticates to GitHub with a fine-grained Personal Access Token loaded from `.env`. Section 5 explains how each guard rail is implemented and how it was attacked.
+It exposes 3 tools, 1 resource and 2 prompts over stdio (JSON-RPC), the transport Claude Desktop
+uses, and authenticates to GitHub with a fine-grained Personal Access Token loaded from `.env`.
+Section 5 explains how each guard rail is implemented and how it was attacked.
 
 ---
 
@@ -24,7 +28,9 @@ It exposes 3 tools, 1 resource and 2 prompts over stdio (JSON-RPC), the transpor
 repo://{owner}/{name}/summary
 ```
 
-Read-only GitHub repository metadata rendered as Markdown — description, default branch, visibility, language, open issue count, stars, last update. Example: `repo://modelcontextprotocol/python-sdk/summary`.
+Read-only GitHub repository metadata rendered as Markdown — description, default branch, visibility,
+language, open issue count, stars, last update. Example:
+`repo://modelcontextprotocol/python-sdk/summary`.
 
 ### Prompts
 
@@ -80,17 +86,21 @@ pip install -r requirements.txt
 ```
 </details>
 
-In VS Code or Cursor: **Cmd/Ctrl+Shift+P → Python: Select Interpreter → `./.venv/bin/python`**, so the integrated terminal activates it automatically.
+In VS Code or Cursor: **Cmd/Ctrl+Shift+P → Python: Select Interpreter → `./.venv/bin/python`**, so
+the integrated terminal activates it automatically.
 
 ### 3.2 Create a GitHub token
 
-1. Go to **[github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)** (fine-grained token).
+1. Go to
+**[github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)**
+(fine-grained token).
 2. **Repository access** → *Only select repositories* → pick the repo you want to file issues in.
 3. **Permissions** → *Repository permissions* → **Issues: Read and write**. (Metadata: Read-only is added for you.)
 4. Set a short expiry (30 days is plenty for this project) and click **Generate token**.
 5. Copy the token — GitHub shows it exactly once.
 
-Fine-grained over classic on purpose: a classic token with `repo` scope can read and write **every** repository you own; this one can only touch the repo you picked, and only its issues.
+Fine-grained over classic on purpose: a classic token with `repo` scope can read and write **every**
+repository you own; this one can only touch the repo you picked, and only its issues.
 
 ### 3.3 Configure `.env`
 
@@ -113,7 +123,8 @@ mkdir -p ~/mcp-workspace
 cd ~/mcp-workspace && git clone https://github.com/hej80/mcp-test.git
 ```
 
-`WORKSPACE_ROOT` is a sandbox: the git tool refuses any path that resolves outside it. `.env` is in `.gitignore` and must never be committed.
+`WORKSPACE_ROOT` is a sandbox: the git tool refuses any path that resolves outside it. `.env` is in
+`.gitignore` and must never be committed.
 
 ### 3.4 Verify before wiring up Claude Desktop
 
@@ -124,7 +135,8 @@ python tests/test_security_and_ratelimit.py   # 14 unit tests
 python tests/smoke_test_stdio.py              # starts the server, speaks MCP to it
 ```
 
-`smoke_test_stdio.py` launches `server.py` as a subprocess and talks JSON-RPC over stdio exactly as Claude Desktop does. If it prints **PASS**, Claude Desktop will be able to start the server.
+`smoke_test_stdio.py` launches `server.py` as a subprocess and talks JSON-RPC over stdio exactly as
+Claude Desktop does. If it prints **PASS**, Claude Desktop will be able to start the server.
 
 ---
 
@@ -139,7 +151,8 @@ Open the config file:
 
 Claude Desktop menu: **Settings → Developer → Edit Config** opens it directly.
 
-Paste the contents of [`claude_desktop_config.json`](claude_desktop_config.json) from this repo, replacing both paths with your own **absolute** paths:
+Paste the contents of [`claude_desktop_config.json`](claude_desktop_config.json) from this repo,
+replacing both paths with your own **absolute** paths:
 
 ```json
 {
@@ -156,11 +169,16 @@ A uv-based alternative is in [`claude_desktop_config.uv.json`](claude_desktop_co
 
 Three things that break this for most people:
 
-- **Paths must be absolute.** Claude Desktop does not run your shell, so `python`, `~` and relative paths do not resolve.
+- **Paths must be absolute.** Claude Desktop does not run your shell, so `python`, `~` and relative
+  paths do not resolve.
 - **Use the venv's interpreter** (`.venv/bin/python`), not the system one, or the `mcp` package will not be found.
-- **No secrets in this file.** The token stays in `.env`. `claude_desktop_config.json` is world-readable plaintext, and committing it with an `env` block containing a token is the standard way these tokens leak.
+- **No secrets in this file.** The token stays in `.env`. `claude_desktop_config.json` is
+  world-readable plaintext, and committing it with an `env` block containing a token is the standard
+  way these tokens leak.
 
-Then **quit Claude Desktop completely** (Cmd+Q — closing the window is not enough) and reopen it. The tools appear under the **search-and-tools icon** in the message box; the prompts appear under the **+** button as `weekly_standup` and `triage_bug_report`.
+Then **quit Claude Desktop completely** (Cmd+Q — closing the window is not enough) and reopen it.
+The tools appear under the **search-and-tools icon** in the message box; the prompts appear under
+the **+** button as `weekly_standup` and `triage_bug_report`.
 
 Ask Claude: *"Run server_diagnostics and tell me if my GitHub token works."*
 
@@ -175,7 +193,8 @@ python exploits/exploit_rate_limit.py   # ~11 seconds
 
 ### Best practice #1 — Input sanitization (`devworkflow/security.py`)
 
-Tool arguments are written by an LLM whose context may contain attacker-controlled text (a README, an issue body, a pasted log), so they are untrusted input exactly like an HTTP form field.
+Tool arguments are written by an LLM whose context may contain attacker-controlled text (a README,
+an issue body, a pasted log), so they are untrusted input exactly like an HTTP form field.
 
 `exploit_injection.py` does two things in order.
 
@@ -186,7 +205,9 @@ Tool arguments are written by an LLM whose context may contain attacker-controll
 | `author = "Alice; touch PWNED #"` | `subprocess.run(f"git log --author={author}", shell=True)` | **File created** — arbitrary command execution |
 | `author = "--output=/path/PWNED"` | `subprocess.run(["git","log", author], shell=False)` | **File created** — `git log --output=` writes an attacker-chosen file |
 
-The second one is the interesting case: **`shell=False` does not stop it.** No shell is involved at all; git itself parses the value as an option. This is argument injection, and only validation stops it.
+The second one is the interesting case: **`shell=False` does not stop it.** No shell is involved at
+all; git itself parses the value as an option. This is argument injection, and only validation stops
+it.
 
 **Part B fires the same payloads at the real tool.** All nine are refused with `INVALID_INPUT` and no file is created:
 
@@ -204,17 +225,26 @@ Part C then runs a legitimate call to show the tool still works.
 The defences, in layers:
 
 1. **`shell=False` with an argv list** (`git_ops.run_git`) — metacharacters are never interpreted.
-2. **Allow-list validation** (`security.validate_author`, `REPO_SLUG_RE`) — reject rather than escape, because escaping is easy to get subtly wrong.
+2. **Allow-list validation** (`security.validate_author`, `REPO_SLUG_RE`) — reject rather than
+escape, because escaping is easy to get subtly wrong.
 3. **`reject_option_like()`** — a value may not start with `-`, which is what stops argument injection.
 4. **Flag and value as one token** (`--author=<value>`, never `--author <value>`).
-5. **Path confinement** (`resolve_repo_path`) — resolve symlinks and `..` *first*, then check containment in `WORKSPACE_ROOT`.
+5. **Path confinement** (`resolve_repo_path`) — resolve symlinks and `..` *first*, then check
+containment in `WORKSPACE_ROOT`.
 6. **Bounds** — `max_count` 1–200, title 256 chars, body 8000 chars, output truncated at 20k.
 
 ### Best practice #2 — Rate limiting (`devworkflow/ratelimit.py`)
 
-**Threat:** an MCP tool is called by a model *in a loop*. A retry loop, a prompt injection that says "keep trying", or a plain agent bug turns `create_github_issue` into an issue-spam bot and burns the token's 5,000 req/hour GitHub quota.
+**Threat:** an MCP tool is called by a model *in a loop*. A retry loop, a prompt injection that says
+"keep trying", or a plain agent bug turns `create_github_issue` into an issue-spam bot and burns the
+token's 5,000 req/hour GitHub quota.
 
-**Algorithm: token bucket.** The bucket holds `capacity` tokens and refills continuously at `capacity / window` tokens per second. Each call spends one; a call with no token is refused and told exactly how long to wait. A bucket permits a short burst (good UX) while bounding the long-run average — unlike a fixed-window counter, which allows `2N` calls across a window boundary. `time.monotonic()` is used so an NTP or DST clock change cannot hand out free tokens, and a `threading.Lock` makes check-then-act atomic.
+**Algorithm: token bucket.** The bucket holds `capacity` tokens and refills continuously at
+`capacity / window` tokens per second. Each call spends one; a call with no token is refused and
+told exactly how long to wait. A bucket permits a short burst (good UX) while bounding the long-run
+average — unlike a fixed-window counter, which allows `2N` calls across a window boundary.
+`time.monotonic()` is used so an NTP or DST clock change cannot hand out free tokens, and a
+`threading.Lock` makes check-then-act atomic.
 
 `exploit_rate_limit.py` simulates the runaway loop with 8 calls in a row:
 
@@ -226,11 +256,16 @@ PART C  after waiting 10.4s   : ALLOWED again — a legitimate user is not locke
 PART D  git_read 10/10, github_write 0.04/3, github_read 20/20
 ```
 
-Part D is the point of per-tool buckets: a write burst does not starve local reads. `dry_run=True` is used throughout so the demo never creates real issues — the limiter runs *before* that flag is read, so the budget behaves exactly as it would for a real write.
+Part D is the point of per-tool buckets: a write burst does not starve local reads. `dry_run=True`
+is used throughout so the demo never creates real issues — the limiter runs *before* that flag is
+read, so the budget behaves exactly as it would for a real write.
 
 ### Bonus — Error disclosure (`devworkflow/errors.py`)
 
-Expected errors return a message describing the *rule* that was broken. Unexpected exceptions return only a random `error_id`; the traceback goes to the stderr log, which only the operator can read. A GitHub `404` never says whether a private repo exists, and `Settings.redact()` scrubs the token from any string on its way out.
+Expected errors return a message describing the *rule* that was broken. Unexpected exceptions return
+only a random `error_id`; the traceback goes to the stderr log, which only the operator can read. A
+GitHub `404` never says whether a private repo exists, and `Settings.redact()` scrubs the token from
+any string on its way out.
 
 ---
 
@@ -261,7 +296,9 @@ mcp-devworkflow/
 └── README.md
 ```
 
-**Why this layout.** `server.py` holds only MCP wiring, so the tool definitions stay readable. Each guard rail is its own module, so "where is input validated?" has exactly one answer. The vulnerable code used to prove the exploits lives in `exploits/` and is never imported by the server.
+**Why this layout.** `server.py` holds only MCP wiring, so the tool definitions stay readable. Each
+guard rail is its own module, so "where is input validated?" has exactly one answer. The vulnerable
+code used to prove the exploits lives in `exploits/` and is never imported by the server.
 
 ---
 
@@ -278,7 +315,10 @@ Every borrowed idea is cited here and again as a comment at the point of use.
 | `github_api.py` | Request headers (`Accept: application/vnd.github+json`, `X-GitHub-Api-Version`) and the `POST /repos/{owner}/{repo}/issues` contract | [GitHub REST API — Create an issue](https://docs.github.com/en/rest/issues/issues#create-an-issue) |
 | `.env` handling | `dotenv_values()` rather than `load_dotenv()`, to keep secrets out of `os.environ` | [python-dotenv docs](https://saurabh-kumar.com/python-dotenv/) |
 
-An AI assistant (Claude) was used while writing this project, as the assignment requires. Every line was reviewed and is explainable; the architecture decisions (rate-limit-before-validate ordering, `dotenv_values` over `load_dotenv`, per-tool buckets, argument-injection guard) are documented in the code comments and in the reflection.
+An AI assistant (Claude) was used while writing this project, as the assignment requires. Every line
+was reviewed and is explainable; the architecture decisions (rate-limit-before-validate ordering,
+`dotenv_values` over `load_dotenv`, per-tool buckets, argument-injection guard) are documented in
+the code comments and in the reflection.
 
 ---
 
@@ -296,44 +336,25 @@ An AI assistant (Claude) was used while writing this project, as the assignment 
 
 ## 9. Known limitations
 
-These are the five I would fix first. Three of them surfaced while building and testing this
-server rather than from a checklist.
+Three limitations I found by building and testing this server, not from a checklist:
 
-**1. The rate limiter charges dry runs.** `create_github_issue(dry_run=true)` spends a token even
-though nothing is sent to GitHub. I did this deliberately — the budget exists to bound how often an
-agent may invoke the tool at all, not how many HTTP requests it makes — but it has a cost: the
-`triage_bug_report` prompt spends two of the three available writes to file one issue, because the
-preview and the confirmed call are each charged. A reviewer could reasonably argue a preview should
-be free. If I revisited it I would give dry runs their own cheaper bucket rather than exempting them
-entirely, so the tool still cannot be used as an unlimited validation oracle.
+- **The rate limiter charges dry runs.** `create_github_issue(dry_run=true)` spends a token even
+  though nothing reaches GitHub, so the `triage_bug_report` prompt burns two of its three writes to
+  file one issue. This was deliberate — the budget bounds how often an agent may invoke the tool at
+  all, not how many HTTP requests it makes — but a reviewer could fairly argue a preview should be
+  cheaper. The fix would be a separate, smaller bucket for dry runs rather than exempting them, so
+  the tool still cannot be used as an unlimited validation oracle.
 
-**2. My own security control broke my own tooling.** After I set `ALLOWED_REPOS` to a single
-repository, `exploit_rate_limit.py` began failing: the allow-list rejected its hard-coded target
-before the rate limit could refuse anything, so the demo reported zero calls allowed and looked
-like a bug in the limiter. The fix was to make the exploit read the server's own configuration
-rather than hard-code a repository. The lesson generalises — a security control's blast radius
-includes your own tests, and those are usually the first thing it breaks, which is exactly when you
-are least inclined to trust the control.
+- **My own security control broke my own tooling.** After I set `ALLOWED_REPOS` to a single
+  repository, `exploit_rate_limit.py` reported zero calls allowed: the allow-list rejected its
+  hard-coded target before the rate limiter could refuse anything, which looked exactly like a bug
+  in the limiter. I fixed it by making the exploit read the server's own configuration. A security
+  control's blast radius includes your own tests, and those are usually the first thing it breaks —
+  precisely when you are least inclined to trust the control.
 
-**3. I cannot fully prove my validation is what protected the user.** When I tried a genuinely
-destructive payload through Claude Desktop, the client declined to send it; my server never saw it.
-I had to use a harmless equivalent to demonstrate the refusal. That is defence in depth working as
-intended, but it also means every test I ran through a well-behaved client gives me false
-confidence: a jailbroken or compromised client is precisely the threat model my validation exists
-for, and I have only exercised it through a careful one. The exploit scripts call the tool functions
-directly for this reason, which is the closest I can get without writing a deliberately hostile
-client.
-
-**4. The workspace sandbox is enforced by my code, not the operating system.**
-`resolve_repo_path()` is correct — it resolves symlinks and `..` before checking containment — but
-it is still an `if` statement I wrote. A bug in my own code bypasses it entirely. Running the server
-in a container with only the workspace directory mounted would make the boundary kernel-enforced.
-That is the difference between a control that is *correct* and one that is *trustworthy*: mine asks
-you to trust that my code has no bugs; a container does not.
-
-**5. Rate limits are in-memory and per-process.** Restarting the server refills every bucket, and
-two clients each launching their own copy each get a full budget — so the effective limit is N times
-the configured one. Backing the buckets with Redis, or even a small SQLite file, would make the
-budget survive restarts and be shared across processes. Related: there is no per-caller identity,
-because stdio MCP has no notion of a user, so the budget is global to the server rather than per
-person.
+- **I cannot fully prove my validation is what protected the user.** When I sent a genuinely
+  destructive payload through Claude Desktop, the client declined to forward it and my server never
+  saw it, so I had to demonstrate the refusal with a harmless equivalent. That is defence in depth
+  working as intended, but it means every test through a well-behaved client gives me false
+  confidence: a jailbroken or compromised client is exactly the threat model this validation exists
+  for. The exploit scripts call the tool functions directly for that reason.

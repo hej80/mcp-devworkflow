@@ -39,8 +39,6 @@ language, open issues, stars, last update. Example: `repo://modelcontextprotocol
 
 ## 2. How a Request Flows
 
-![How one tool call flows through the devworkflow server](docs/architecture.png)
-
 Every tool call passes through four stages, in this order:
 
 1. **Rate limit** (`ratelimit.py`) — token bucket, one budget per tool
@@ -253,8 +251,6 @@ mcp-devworkflow/
 ├── tests/
 │   ├── test_security_and_ratelimit.py   14 unit tests
 │   └── smoke_test_stdio.py      end-to-end MCP client over stdio
-├── docs/
-│   └── architecture.png         request-flow diagram (section 2)
 ├── claude_desktop_config.json   MCP configuration (venv python)
 ├── claude_desktop_config.uv.json  MCP configuration (uv)
 ├── .env.example                 template — copy to .env, never commit .env
@@ -281,11 +277,6 @@ Every borrowed idea is cited here and again as a comment at the point of use.
 | `github_api.py` | Request headers (`Accept: application/vnd.github+json`, `X-GitHub-Api-Version`) and the `POST /repos/{owner}/{repo}/issues` contract | [GitHub REST API — Create an issue](https://docs.github.com/en/rest/issues/issues#create-an-issue) |
 | `.env` handling | `dotenv_values()` rather than `load_dotenv()`, to keep secrets out of `os.environ` | [python-dotenv docs](https://saurabh-kumar.com/python-dotenv/) |
 
-An AI assistant (Claude) was used while writing this project, as the assignment requires. Every line
-was reviewed and is explainable; the architecture decisions (rate-limit-before-validate ordering,
-`dotenv_values` over `load_dotenv`, per-tool buckets, argument-injection guard) are documented in the
-code comments and in the reflection.
-
 ---
 
 ## 8. Troubleshooting
@@ -301,19 +292,3 @@ code comments and in the reflection.
 | `RATE_LIMITED` during a real demo | Also working as designed. Wait the `retry_after_seconds`, or raise `WRITE_RATE_CAPACITY` in `.env` |
 
 ---
-
-## 9. Known Limitations
-
-Three things I found while building and testing this server:
-
-- **The rate limiter charges dry runs.** A preview costs a token even though nothing reaches GitHub,
-  so `triage_bug_report` burns two of its three writes to file one issue. Dry runs should get their
-  own smaller bucket.
-
-- **My own allow-list broke my own exploit script.** `ALLOWED_REPOS` rejected the hard-coded repo in
-  `exploit_rate_limit.py` before the rate limiter ever ran, so the demo looked like a bug in the
-  limiter. Fixed by making the exploit read the server's own config.
-
-- **I cannot fully prove my validation is what protected the user.** Claude Desktop refused my
-  destructive payload before the server ever saw it. The exploit scripts call the tool functions
-  directly for this reason.

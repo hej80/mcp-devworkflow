@@ -22,8 +22,6 @@ tools, 1 resource and 2 prompts over stdio (JSON-RPC), authenticated by a fine-g
 
 ## 2. How a Request Flows
 
-![How one tool call flows through the devworkflow server](docs/architecture.png)
-
 1. **Rate limit** (`ratelimit.py`) — token bucket, one budget per tool
 2. **Validate** (`security.py`) — allow-list charsets, no leading `-`, path confined to `WORKSPACE_ROOT`
 3. **Execute** — `git_ops.py` (subprocess, `shell=False`) or `github_api.py` (httpx + Bearer token)
@@ -131,7 +129,6 @@ mcp-devworkflow/
 │   └── github_api.py            authenticated GitHub REST client (httpx)
 ├── exploits/                    attacks vulnerable code, then the hardened tool
 ├── tests/                       14 unit tests + end-to-end MCP client over stdio
-├── docs/architecture.png        request-flow diagram (section 2)
 ├── claude_desktop_config.json   MCP config (a .uv.json variant is also provided)
 └── .env.example                 template — copy to .env, never commit .env
 ```

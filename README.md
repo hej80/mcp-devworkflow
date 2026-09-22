@@ -1,5 +1,7 @@
 # devworkflow — an MCP server for Development Workflow
 
+**Author: Hamdan Emad Jabr Jaarour** · GitHub: hej80
+
 A local [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude Desktop read a local git repository and file GitHub issues on your behalf, with **input sanitization** and **rate limiting** enforced on every call.
 
 | | |

@@ -43,56 +43,18 @@ Read-only GitHub repository metadata rendered as Markdown — description, defau
 
 ---
 
-## 2. Architecture
+## 2. How a request flows
 
-```mermaid
-flowchart TB
-    subgraph client["Claude Desktop (MCP client)"]
-        LLM["Claude model<br/>decides which tool to call"]
-    end
+Every tool call passes through the same four stages, in this order:
 
-    subgraph server["devworkflow MCP server &nbsp;·&nbsp; server.py &nbsp;·&nbsp; local process"]
-        FM["FastMCP<br/>registers 3 tools · 1 resource · 2 prompts"]
+1. **Rate limit** (`ratelimit.py`) — token bucket, one budget per tool
+2. **Validate** (`security.py`) — allow-list charsets, no leading `-`, path confined to `WORKSPACE_ROOT`
+3. **Execute** — `git_ops.py` (subprocess, `shell=False`) or `github_api.py` (httpx + Bearer token)
+4. **Reply** (`errors.py`) — uniform `{ok, error:{code, message}}` envelope, no tracebacks or secrets
 
-        subgraph guards["Guard rails — every call passes through, in this order"]
-            direction LR
-            RL["1 · ratelimit.py<br/>token bucket<br/><b>BEST PRACTICE 2</b>"]
-            SEC["2 · security.py<br/>validate & sanitize<br/><b>BEST PRACTICE 1</b>"]
-            ERR["4 · errors.py<br/>safe error envelope<br/>+ stderr log"]
-        end
-
-        subgraph exec["3 · Execution layer"]
-            direction LR
-            GIT["git_ops.py<br/>subprocess, shell=False<br/>argv list · timeout · minimal env"]
-            GH["github_api.py<br/>httpx · Bearer token<br/>timeout · status mapping"]
-        end
-
-        CFG["config.py<br/>pathlib + dotenv_values<br/>secrets never enter os.environ"]
-    end
-
-    ENV[(".env<br/>GITHUB_TOKEN<br/>WORKSPACE_ROOT<br/>gitignored")]
-    REPO[("Local git repo<br/>inside WORKSPACE_ROOT only")]
-    API(("GitHub REST API<br/>api.github.com"))
-
-    LLM <-->|"JSON-RPC over stdio"| FM
-    FM --> RL --> SEC --> exec
-    exec --> ERR --> FM
-    CFG -.->|"settings at startup"| FM
-    ENV -.->|"read once at startup"| CFG
-    GIT -->|"read only"| REPO
-    GH -->|"HTTPS + Bearer"| API
-
-    classDef guard fill:#fde8e8,stroke:#c53030,stroke-width:2px,color:#1a202c
-    classDef exec fill:#e6f4ea,stroke:#2f855a,stroke-width:2px,color:#1a202c
-    classDef ext fill:#e8eefc,stroke:#2b6cb0,stroke-width:2px,color:#1a202c
-    class RL,SEC,ERR guard
-    class GIT,GH exec
-    class ENV,REPO,API ext
-```
-
-**The order matters.** Rate limit → validate → execute → sanitize errors. The budget is spent *before* any validation or I/O, so a hostile loop cannot use the tool as a free validation oracle, and no attacker-controlled value reaches `git` or `httpx` until it has passed `security.py`.
-
----
+**The order is deliberate.** The budget is spent *before* validation, so a runaway agent loop cannot
+use the tool as an unlimited validation oracle; validation runs before any subprocess or HTTP call,
+so no attacker-influenced value reaches `git` or `httpx`.
 
 ## 3. Setup
 
@@ -106,7 +68,7 @@ flowchart TB
 ### 3.1 Clone and create the virtual environment
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/mcp-devworkflow.git
+git clone https://github.com/hej80/mcp-devworkflow.git
 cd mcp-devworkflow
 
 uv venv                         # creates .venv/
@@ -146,20 +108,28 @@ Edit `.env`:
 
 ```ini
 GITHUB_TOKEN=github_pat_xxxxxxxxxxxxxxxxxxxx
-WORKSPACE_ROOT=/Users/YOUR_NAME/mcp-workspace
-ALLOWED_REPOS=YOUR_USERNAME/your-test-repo
+WORKSPACE_ROOT=/Users/hamdanjaarour/mcp-workspace
+ALLOWED_REPOS=hej80/mcp-test
 ```
 
 Then create the workspace and put a repo in it:
 
 ```bash
 mkdir -p ~/mcp-workspace
-cd ~/mcp-workspace && git clone https://github.com/YOUR_USERNAME/your-test-repo.git
+cd ~/mcp-workspace && git clone https://github.com/hej80/mcp-test.git
 ```
 
 `WORKSPACE_ROOT` is a sandbox: the git tool refuses any path that resolves outside it. `.env` is in `.gitignore` and must never be committed.
 
 ### 3.4 Verify before wiring up Claude Desktop
+
+Run everything at once:
+
+```bash
+bash verify.sh
+```
+
+Or individually:
 
 ```bash
 python tests/test_security_and_ratelimit.py   # 14 unit tests

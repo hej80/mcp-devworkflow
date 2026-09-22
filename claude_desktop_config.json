@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "devworkflow": {
+      "command": "/Users/hamdanjaarour/mcp-devworkflow/.venv/bin/python",
+      "args": [
+        "/Users/hamdanjaarour/mcp-devworkflow/server.py"
+      ]
+    }
+  }
+}

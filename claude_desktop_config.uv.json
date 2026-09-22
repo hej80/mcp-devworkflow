@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "devworkflow": {
+      "command": "/Users/hamdanjaarour/.local/bin/uv",
+      "args": [
+        "--directory",
+        "/Users/hamdanjaarour/mcp-devworkflow",
+        "run",
+        "server.py"
+      ]
+    }
+  }
+}

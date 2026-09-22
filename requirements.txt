@@ -1,0 +1,9 @@
+# devworkflow MCP server -- runtime dependencies
+# Install with:  uv pip install -r requirements.txt   (or: pip install -r requirements.txt)
+
+mcp[cli]>=1.2.0,<2.0.0   # pinned: SDK 2.0 renamed FastMCP -> MCPServer
+httpx>=0.27.0          # HTTP client for the authenticated GitHub REST API calls
+python-dotenv>=1.0.0   # reads secrets from .env without putting them in os.environ
+
+# --- development / verification only ---------------------------------------
+pytest>=8.0.0          # runs tests/test_security_and_ratelimit.py

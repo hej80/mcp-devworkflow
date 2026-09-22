@@ -4,15 +4,7 @@
 
 A local [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude Desktop read a local git repository and file GitHub issues on your behalf, with **input sanitization** and **rate limiting** enforced on every call.
 
-| | |
-|---|---|
-| **Domain** | Development Workflow (git history + GitHub issue management) |
-| **Exposes** | 3 tools, 1 resource, 2 prompts |
-| **Authentication** | GitHub fine-grained Personal Access Token, loaded from `.env` |
-| **Best practice #1** | Input sanitization (command injection, argument injection, path traversal) |
-| **Best practice #2** | Rate limiting (token bucket, per tool) |
-| **Bonus practice** | Error disclosure control (safe messages + operator-only `error_id`) |
-| **Transport** | stdio (JSON-RPC), the transport Claude Desktop uses |
+It exposes 3 tools, 1 resource and 2 prompts over stdio (JSON-RPC), the transport Claude Desktop uses, and authenticates to GitHub with a fine-grained Personal Access Token loaded from `.env`. Section 5 explains how each guard rail is implemented and how it was attacked.
 
 ---
 
@@ -44,6 +36,8 @@ Read-only GitHub repository metadata rendered as Markdown — description, defau
 ---
 
 ## 2. How a request flows
+
+![How one tool call flows through the devworkflow server](docs/architecture.png)
 
 Every tool call passes through the same four stages, in this order:
 
@@ -123,13 +117,7 @@ cd ~/mcp-workspace && git clone https://github.com/hej80/mcp-test.git
 
 ### 3.4 Verify before wiring up Claude Desktop
 
-Run everything at once:
-
-```bash
-bash verify.sh
-```
-
-Or individually:
+Run both checks:
 
 ```bash
 python tests/test_security_and_ratelimit.py   # 14 unit tests
@@ -264,6 +252,8 @@ mcp-devworkflow/
 ├── tests/
 │   ├── test_security_and_ratelimit.py   14 unit tests
 │   └── smoke_test_stdio.py      end-to-end MCP client over stdio
+├── docs/
+│   └── architecture.png         request-flow diagram (section 2)
 ├── claude_desktop_config.json   MCP configuration (venv python)
 ├── claude_desktop_config.uv.json  MCP configuration (uv)
 ├── .env.example                 template — copy to .env, never commit .env

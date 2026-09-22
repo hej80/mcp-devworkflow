@@ -306,4 +306,15 @@ An AI assistant (Claude) was used while writing this project, as the assignment 
 
 ## 9. Known limitations
 
-Single-process in-memory rate limiting (restarting the server resets every bucket, and two clients each get their own budget); no per-caller identity, because stdio MCP has no notion of a user; issue creation is not idempotent, so a retry after a network timeout could double-file; `git` is shelled out to rather than using a library like `pygit2`. See the reflection document for how each would be addressed.
+| Limitation | Why | How I would fix it |
+|---|---|---|
+| **Rate limits reset on restart** | The buckets live in process memory, and two clients each running their own copy each get a full budget — so the real limit is N times the configured one | Store the counters in Redis or SQLite so every process shares one budget |
+| **No per-caller identity** | stdio MCP has no notion of a user, so the budget is global to the server | An HTTP transport with OAuth, keying a bucket per authenticated caller |
+| **Issue creation is not idempotent** | If GitHub succeeds but the response is lost to a timeout, a retry files a duplicate | An idempotency key hashing repo + title + body, with a short-lived cache of recent issues |
+| **ASCII-only validation** | The allow-list rejects legitimate names containing accents or non-Latin scripts | Unicode NFKC normalization, then reject by character *category* rather than by alphabet |
+| **Sandbox enforced in Python, not the OS** | `resolve_repo_path()` is correct — it resolves symlinks before checking containment — but a bug in my own code would bypass it | Run the server in a container with only the workspace mounted, so the kernel enforces the boundary |
+
+The last one is different in kind from the others. The first four are things I would build with
+more time; the fifth is the difference between a control that is *correct* and one that is
+*trustworthy*. Mine is correct, but it asks you to trust that my code has no bugs — a container
+does not.
